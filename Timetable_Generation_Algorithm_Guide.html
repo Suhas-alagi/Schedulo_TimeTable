@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timetable Generation Algorithm Guide</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: white;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 20px;
+        }
+        
+        h1 {
+            color: #4CAF50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .diagram-section {
+            margin: 40px 0;
+            padding: 30px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        h2 {
+            color: #2196F3;
+            font-size: 1.8em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #2196F3;
+            padding-bottom: 10px;
+        }
+        
+        h3 {
+            color: #555;
+            font-size: 1.3em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        table th {
+            background: #2196F3;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .code-block {
+            background: #f4f4f4;
+            border-left: 4px solid #FFC107;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            border-radius: 4px;
+        }
+        
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+        }
+        
+        .insight {
+            background: #e8f5e9;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .insight strong {
+            color: #2e7d32;
+        }
+        
+        ul, ol {
+            margin: 15px 0 15px 30px;
+        }
+        
+        li {
+            margin: 8px 0;
+        }
+        
+        .example {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ddd;
+            color: #999;
+            font-size: 0.9em;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .container {
+                padding: 20px;
+            }
+            .mermaid {
+                page-break-inside: avoid;
+            }
+            .section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📚 Timetable Generation Algorithm Guide</h1>
+            <p class="subtitle">Understanding the Practical & Lecture Scheduling with Constraints</p>
+        </header>
+
+        <div class="diagram-section">
+            <h2>Overall Flow Diagram</h2>
+            <div class="mermaid">
+graph TD
+    A["🎯 TIMETABLE GENERATION START"] --> B{"Which Generation?"}
+    B -->|Practicals| PT["PRACTICAL TIMETABLE GENERATOR"]
+    B -->|Lectures| LT["LECTURE TIMETABLE GENERATOR"]
+    
+    PT --> PT1["LOAD DATA"]
+    PT1 --> PT1a["• Faculty names<br/>• Subject map<br/>• Workload assignments<br/>• Available labs"]
+    PT1a --> PT2["PREPARE ASSIGNMENTS<br/>Extract from Workload"]
+    PT2 --> PT2a["(Year, Division, Batch) →<br/>List of practicals<br/>with subject, faculty,<br/>hours, required_lab"]
+    
+    PT2a --> PT3["INITIALIZE TRACKING"]
+    PT3 --> PT3a["• batch_occupied dict<br/>• lab_schedule dict<br/>• Round-robin cycle<br/>  SY, SY, TY, TY, BE"]
+    
+    PT3a --> PT4["MAIN LOOP: 30 PASSES<br/>Try to schedule remaining"]
+    PT4 --> PT5["For Each Day"]
+    PT5 --> PT6["For Each Time Slot<br/>11:15, 14:15, 16:20"]
+    
+    PT6 --> PT7["ROUND-ROBIN ORDERING<br/>Reorder pending batch keys<br/>using fairness cycle"]
+    PT7 --> PT8["For Each Batch Queue<br/>Try first unscheduled practical"]
+    
+    PT8 --> PT9{"CAN SCHEDULE?<br/>Check Constraints"}
+    PT9 -->|Faculty busy?| PC1["❌ Faculty already<br/>teaching in lab<br/>or preferred_off"]
+    PT9 -->|Batch occupied?| PC2["❌ Batch already<br/>has session<br/>at this slot"]
+    PT9 -->|Lab available?| PC3["❌ No free lab<br/>or required lab busy"]
+    PT9 -->|2-hr: 2nd slot free?| PC4["❌ For 2-hour practicals:<br/>next slot occupied"]
+    PT9 -->|All OK ✓| PT10["SELECT LAB"]
+    
+    PC1 --> PT8
+    PC2 --> PT8
+    PC3 --> PT8
+    PC4 --> PT8
+    
+    PT10 --> PT10a["Find best available lab:<br/>• Required lab if specific<br/>• Any lab if common<br/>• Must be free"]
+    PT10a --> PT11["WRITE SESSION"]
+    PT11 --> PT11a["✓ Add to lab_schedule<br/>✓ Add to batch_occupied<br/>✓ Mark both slots<br/>  if 2-hour session"]
+    PT11a --> PT12["Remove from queue<br/>Schedule count++"]
+    PT12 --> PT8
+    
+    PT8 -->|All batches tried| PT13{"Progress Made?"}
+    PT13 -->|Yes| PT5
+    PT13 -->|No| PT14["STABLE STATE<br/>Exit loop"]
+    PT14 --> PT15["SAVE RESULTS"]
+    PT15 --> PT15a["• Save master_lab_timetable<br/>• Log unscheduled practicals<br/>• Return stats"]
+    
+    LT --> LT1["LOAD DATA"]
+    LT1 --> LT1a["• Class timetables<br/>• Faculty names<br/>• Subject map<br/>• Workload"]
+    LT1a --> LT2["PREPARE ASSIGNMENTS<br/>Extract from Workload"]
+    LT2 --> LT2a["(Year, Division, Subject) →<br/>List of individual lectures<br/>1 lecture per theory hour"]
+    
+    LT2a --> LT3["INITIALIZE"]
+    LT3 --> LT3a["• class_timetables<br/>• Round-robin cycle"]
+    
+    LT3a --> LT4["MAIN LOOP: 30 PASSES"]
+    LT4 --> LT5["For Each Day"]
+    LT5 --> LT6["For Each Time Slot<br/>10:15→16:20<br/>Skip lunch 13:15"]
+    
+    LT6 --> LT7["ROUND-ROBIN ORDERING<br/>Reorder pending<br/>subject keys"]
+    LT7 --> LT8["For Each Subject Queue<br/>Try first unscheduled lecture"]
+    
+    LT8 --> LT9{"CAN SCHEDULE?<br/>Check Constraints"}
+    LT9 -->|Slot free?| LC1["❌ Slot already<br/>occupied in<br/>class timetable"]
+    LT9 -->|Faculty busy?| LC2["❌ Faculty teaching<br/>another class<br/>at this time"]
+    LT9 -->|Same subject<br/>today?| LC3["❌ Subject already<br/>has lecture<br/>on this day<br/>(spread constraint)"]
+    LT9 -->|Faculty break?| LC4["❌ Faculty in<br/>adjacent slot<br/>for same class<br/>(needs break)"]
+    LT9 -->|All OK ✓| LT10["PLACE LECTURE"]
+    
+    LC1 --> LT8
+    LC2 --> LT8
+    LC3 --> LT8
+    LC4 --> LT8
+    
+    LT10 --> LT10a["✓ Add to class<br/>  timetable schedule<br/>✓ Remove from queue<br/>✓ Schedule count++"]
+    LT10a --> LT8
+    
+    LT8 -->|All subjects tried| LT11{"Progress Made?"}
+    LT11 -->|Yes| LT5
+    LT11 -->|No| LT12["STABLE STATE<br/>Exit loop"]
+    LT12 --> LT13["SAVE RESULTS"]
+    LT13 --> LT13a["• Update class_timetables<br/>• Log unscheduled lectures<br/>• Return stats"]
+    
+    PT15a --> END["📊 DONE"]
+    LT13a --> END
+    
+    style A fill:#4CAF50
+    style END fill:#4CAF50
+    style PT9 fill:#FFC107
+    style LT9 fill:#FFC107
+    style PT13 fill:#2196F3
+    style LT11 fill:#2196F3
+    style PC1 fill:#f44336
+    style PC2 fill:#f44336
+    style PC3 fill:#f44336
+    style PC4 fill:#f44336
+    style LC1 fill:#f44336
+    style LC2 fill:#f44336
+    style LC3 fill:#f44336
+    style LC4 fill:#f44336
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Two Independent Generators</h2>
+            
+            <h3>1. PRACTICAL TIMETABLE GENERATOR (Lab Sessions)</h3>
+            <p><strong>Goal:</strong> Schedule batch practicals into labs</p>
+            
+            <h4>Key Data Structures:</h4>
+            <ul>
+                <li><span class="highlight">batch_occupied[Year, Division, Batch][Day][Slot]</span> → True/False (marks slot as taken)</li>
+                <li><span class="highlight">lab_schedule[Lab][Day][Slot]</span> → List of sessions</li>
+            </ul>
+            
+            <h4>Algorithm: 30-pass greedy scheduler</h4>
+            <ul>
+                <li>Each pass: Iterate through all days → all time slots (11:15, 14:15, 16:20)</li>
+                <li>For each slot, try to place practicals using <strong>round-robin fairness</strong> (SY gets 2 turns, TY gets 2 turns, BE gets 1 turn — repeating)</li>
+                <li>Stop when no more placements made (stable state)</li>
+            </ul>
+
+            <h3 style="margin-top: 25px;">2. LECTURE TIMETABLE GENERATOR (Class Lectures)</h3>
+            <p><strong>Goal:</strong> Schedule individual lectures into class timetables</p>
+            
+            <h4>Key Data Structures:</h4>
+            <ul>
+                <li><span class="highlight">class_timetables[Year, Division]</span> → schedule with Day → Slot → Lectures list</li>
+                <li>Each subject gets <strong>N</strong> lecture slots equal to its theory hours</li>
+            </ul>
+            
+            <h4>Algorithm: Same 30-pass approach</h4>
+            <ul>
+                <li>Each pass: Days → Slots (10:15 to 16:20, skip lunch at 13:15)</li>
+                <li>Try to place first unscheduled lecture per subject using round-robin ordering</li>
+                <li>Stop when stable</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>🔒 Constraint Checking</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Constraint</th>
+                        <th>For Practical</th>
+                        <th>For Lecture</th>
+                        <th>How it Works</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Faculty Busy</strong></td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>Faculty already teaching in another lab/class at this time</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Preferred Off</strong></td>
+                        <td>✓</td>
+                        <td>—</td>
+                        <td>Faculty marked this day/slot unavailable</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Batch/Class Slot Occupied</strong></td>
+                        <td>✓</td>
+                        <td>✓</td>
+                        <td>Batch or class already has activity at this slot</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Lab Availability</strong></td>
+                        <td>✓</td>
+                        <td>—</td>
+                        <td>No free lab OR required lab is occupied</td>
+                    </tr>
+                    <tr>
+                        <td><strong>2-Hour Continuation</strong></td>
+                        <td>✓</td>
+                        <td>—</td>
+                        <td>For 2-hr practicals: next slot must also be free</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Same Subject per Day</strong></td>
+                        <td>—</td>
+                        <td>✓</td>
+                        <td>Subject can only have 1 lecture per day (spread constraint)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Faculty Break</strong></td>
+                        <td>—</td>
+                        <td>✓</td>
+                        <td>Faculty needs break between back-to-back sessions in same class</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Checking Example (Practical)</h3>
+            <div class="code-block">
+if faculty in used_faculty:
+    return False
+if _faculty_busy(faculty, day, slot):
+    return False
+if not _batch_slot_free(batch, day, slot):
+    return False
+if hours == 2 and not _batch_slot_free(batch, day, NEXT_SLOT[slot]):
+    return False
+if _select_lab(practical, day, slot) is None:
+    return False
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>⚙️ Round-Robin Fairness</h2>
+            <p><strong>Why it matters:</strong> Prevents starvation (e.g., BE year getting locked out)</p>
+            
+            <h3>Cycle Pattern: <span class="highlight">['SY', 'SY', 'TY', 'TY', 'BE']</span> repeating</h3>
+            <ul>
+                <li>SY gets turn #1 and #2</li>
+                <li>TY gets turn #3 and #4</li>
+                <li>BE gets turn #5</li>
+                <li>Then cycle repeats</li>
+            </ul>
+            
+            <div class="insight">
+                <strong>Key Benefit:</strong> This guarantees BE is visited once every 5 tries, so slots for lower years can't monopolize availability. Every year gets a fair chance at placement.
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Simple Example</h2>
+            
+            <h3>Scenario</h3>
+            <div class="example">
+                <strong>Input:</strong>
+                <ul>
+                    <li>SY-A-B1 needs 2-hr practical (Biology, Dr. Smith, Common Lab)</li>
+                    <li>Time: Wednesday 14:15</li>
+                    <li>Constraints: Dr. Smith prefers off Wednesday</li>
+                </ul>
+            </div>
+
+            <h3>Constraint Checking Process</h3>
+            <ol>
+                <li><strong>Check Faculty Busy:</strong> Look for "preferred_off" constraint
+                    <ul>
+                        <li>Found: "preferred_off: Wednesday 14:15 for Dr. Smith"</li>
+                        <li>Result: ❌ REJECT</li>
+                    </ul>
+                </li>
+                <li>Never reaches lab check because constraint failed</li>
+            </ol>
+
+            <h3>If Constraint Removed</h3>
+            <ol>
+                <li>✓ Faculty not busy</li>
+                <li>✓ Batch free at 14:15</li>
+                <li>✓ Batch free at 15:15 (NEXT_SLOT for 2-hour)</li>
+                <li>✓ Lab1 free at both slots</li>
+                <li>✓ <strong>PLACE:</strong> Lab1 has SY-A-B1 Biology at 14:15+15:15</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>🎯 Key Algorithm Insights</h2>
+            <div class="insight">
+                <strong>1. Greedy Strategy</strong> — Always take the first valid slot found (no backtracking). This is fast but may leave gaps.
+            </div>
+            <div class="insight">
+                <strong>2. Multi-pass Stabilization</strong> — Keeps trying up to 30 passes until nothing more fits. Later passes may find gaps created by earlier placements.
+            </div>
+            <div class="insight">
+                <strong>3. Fairness First</strong> — Round-robin ordering prevents unfair lockouts where one year monopolizes slots.
+            </div>
+            <div class="insight">
+                <strong>4. Constraint-Driven</strong> — No placement without passing ALL checks. Constraints are binding filters.
+            </div>
+            <div class="insight">
+                <strong>5. No Conflict Resolution</strong> — Unscheduled items become "leftovers" reported to UI for manual intervention.
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Generated: May 4, 2026</p>
+            <p>TimeTable Generation Algorithm Documentation</p>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        mermaid.contentLoaded();
+    </script>
+</body>
+</html>
