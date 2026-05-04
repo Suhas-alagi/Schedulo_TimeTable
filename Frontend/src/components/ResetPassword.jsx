@@ -192,14 +192,15 @@ export default function ResetPassword() {
             value={value}
             onChange={handleInputChange}
             className="w-full bg-white/5 border border-white/10 text-white pl-11 pr-12 py-3 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-white/20"
+            autoComplete="new-password"
           />
           <button
             type="button"
             onClick={() =>
-              setShowPassword({
-                ...showPassword,
-                [showPasswordKey]: !show,
-              })
+              setShowPassword(prev => ({
+                ...prev,
+                [showPasswordKey]: !prev[showPasswordKey],
+              }))
             }
             className="absolute inset-y-0 right-0 pr-4 flex items-center text-white/40 hover:text-white/60 transition-colors"
           >
