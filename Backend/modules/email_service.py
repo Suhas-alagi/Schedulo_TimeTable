@@ -46,3 +46,17 @@ def send_faculty_welcome_email(faculty_name, faculty_email):
     </div>
     """
     return send_email(faculty_email, subject, html_content)
+
+
+def send_timetable_generated_email(faculty_name, faculty_email):
+    subject = "Timetable Generated - Check Your Schedule"
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2c3e50;">Timetable Generated, {faculty_name}!</h2>
+        <p>The timetable has been generated successfully.</p>
+        <p>Please login to Schedulo and check your schedule for classes.</p>
+        <br>
+        <p style="color: #7f8c8d; font-size: 12px;">This is an automated message from Schedulo.</p>
+    </div>
+    """
+    return send_email(faculty_email, subject, html_content)

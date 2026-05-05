@@ -4,6 +4,7 @@ from datetime import datetime
 import logging
 from functools import wraps
 import jwt
+from bson import ObjectId
 import config
 
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +36,7 @@ from modules import (
 
 # NEW modules
 from modules import auth_handler, settings_handler, constraints_handler
+from modules.email_service import send_timetable_generated_email
 
 
 # ========================================================================
@@ -321,6 +323,46 @@ def update_faculty_workload():
 # MASTER PRACTICAL TIMETABLE
 # ========================================================================
 
+def _send_timetable_notifications():
+    """Send email notifications to all faculty allocated in the generated timetables."""
+    from config import db
+
+    faculty_collection = db['faculty']
+    master_lab_col = db['master_lab_timetable']
+    class_col = db['class_timetable']
+
+    # Collect all unique faculty IDs from master lab timetable
+    faculty_ids = set()
+    for lab_doc in master_lab_col.find({}, {'schedule': 1}):
+        schedule = lab_doc.get('schedule', {})
+        for day_schedule in schedule.values():
+            for slot_sessions in day_schedule.values():
+                for session in slot_sessions:
+                    faculty_id = session.get('faculty_id')
+                    if faculty_id:
+                        faculty_ids.add(faculty_id)
+
+    # Collect all unique faculty IDs from class timetable
+    for class_doc in class_col.find({}, {'schedule': 1}):
+        schedule = class_doc.get('schedule', {})
+        for day_schedule in schedule.values():
+            for slot_sessions in day_schedule.values():
+                for session in slot_sessions:
+                    faculty_id = session.get('faculty_id')
+                    if faculty_id:
+                        faculty_ids.add(faculty_id)
+
+    # Send emails to all allocated faculty
+    for faculty_id_str in faculty_ids:
+        try:
+            faculty = faculty_collection.find_one({'_id': ObjectId(faculty_id_str)})
+            if faculty and faculty.get('email'):
+                send_timetable_generated_email(faculty.get('name', 'Faculty'), faculty['email'])
+                logger.info(f"Sent timetable notification to {faculty['email']}")
+        except Exception as e:
+            logger.error(f"Failed to send notification to faculty {faculty_id_str}: {e}")
+
+
 @app.route('/api/regenerate_master_practical_timetable', methods=['POST'])
 @token_required
 @role_required('admin')
@@ -367,6 +409,9 @@ def regenerate_master_practical_timetable():
         if not lecture_result.get('success'):
             _rollback("lecture generation failed")
             return jsonify({"error": "Lecture generation failed"}), 500
+
+        # Send notifications to allocated faculty
+        _send_timetable_notifications()
 
         return jsonify({"message": "Timetable generated successfully"}), 201
 
