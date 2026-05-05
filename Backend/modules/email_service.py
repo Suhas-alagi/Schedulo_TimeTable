@@ -7,6 +7,7 @@ load_dotenv()
 
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")  # Default to localhost for development
 
 
 def send_email(to, subject, html_content):
@@ -30,6 +31,7 @@ def send_email(to, subject, html_content):
 
 def send_faculty_welcome_email(faculty_name, faculty_email):
     subject = "Welcome to Schedulo – Your Faculty Account Has Been Created"
+    login_url = f"{BASE_URL}/login"
     html_content = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2c3e50;">Welcome to Schedulo, {faculty_name}!</h2>
@@ -40,6 +42,9 @@ def send_faculty_welcome_email(faculty_name, faculty_email):
             <strong>Default Password:</strong> password123
         </p>
         <p style="color: #e74c3c; font-weight: bold;">IMPORTANT: Please reset your password on first login for security.</p>
+        <p style="text-align: center; margin: 30px 0;">
+            <a href="{login_url}" style="background-color: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Login to Schedulo</a>
+        </p>
         <p>If you have any questions, please contact your administrator.</p>
         <br>
         <p style="color: #7f8c8d; font-size: 12px;">This is an automated message from Schedulo.</p>
@@ -50,11 +55,17 @@ def send_faculty_welcome_email(faculty_name, faculty_email):
 
 def send_timetable_generated_email(faculty_name, faculty_email):
     subject = "Timetable Generated - Check Your Schedule"
+    login_url = f"{BASE_URL}/login"
     html_content = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2c3e50;">Timetable Generated, {faculty_name}!</h2>
         <p>The timetable has been generated successfully.</p>
         <p>Please login to Schedulo and check your schedule for classes.</p>
+        <p style="text-align: center; margin: 30px 0;">
+            <a href="{login_url}" style="background-color: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Login to Schedulo</a>
+        </p>
+        <p>If the button doesn't work, you can also copy and paste this link into your browser:<br>
+        <a href="{login_url}" style="color: #3498db;">{login_url}</a></p>
         <br>
         <p style="color: #7f8c8d; font-size: 12px;">This is an automated message from Schedulo.</p>
     </div>
