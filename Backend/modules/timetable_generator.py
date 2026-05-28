@@ -4,6 +4,7 @@ from datetime import datetime
 from config import db
 import logging
 from config import db
+from modules import settings_handler
 
 constraints_collection = db["constraints"]
 
@@ -11,16 +12,19 @@ constraints_collection = db["constraints"]
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DAYS               = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-ALL_SLOTS          = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20']
-START_SLOTS        = ['11:15', '14:15', '16:20']
-NEXT_SLOT          = {'11:15': '12:15', '14:15': '15:15'}
-TWO_HR_START_SLOTS = ['11:15', '14:15']
+DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
-# TG-02 FIX: follow-on slot → the start slot that "covers" it
-# e.g. a 2-hr session starting at 11:15 occupies 12:15 as well.
-# When checking if faculty is busy at 12:15, we must also look at 11:15.
-COVERS = {'12:15': '11:15', '15:15': '14:15'}
+# These will be dynamically loaded from settings
+# ALL_SLOTS          = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20']
+# START_SLOTS        = ['11:15', '14:15', '16:20']
+# NEXT_SLOT          = {'11:15': '12:15', '14:15': '15:15'}
+# TWO_HR_START_SLOTS = ['11:15', '14:15']
+
+# TG-01 FIX: Round-robin weights per year.
+# Pattern: SY, SY, TY, TY, BE — repeating.
+# This gives SY and TY 2 turns each before BE gets 1 turn,
+# preserving priority while guaranteeing BE is never locked out.
+ROUND_ROBIN_CYCLE = ['SY', 'SY', 'TY', 'TY', 'BE']
 
 # TG-01 FIX: Round-robin weights per year.
 # Pattern: SY, SY, TY, TY, BE — repeating.
@@ -55,6 +59,78 @@ class TimetableGenerator:
         self.faculty_names  = {}
         self.labs_list      = []
         self.subject_map    = {}   # short_name → subject doc
+        
+        # Load time slots from settings
+        self._load_time_slots()
+
+    def _load_time_slots(self):
+        """Load time slots dynamically from settings instead of using hardcoded values."""
+        try:
+            # Get settings from database
+            settings_doc = settings_handler.collection.find_one({"type": "department_timings"})
+            if not settings_doc:
+                logger.warning("No department timings found in settings, using defaults")
+                # Fallback to default values
+                self.ALL_SLOTS = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20']
+                self.START_SLOTS = ['11:15', '14:15', '16:20']
+                self.NEXT_SLOT = {'11:15': '12:15', '14:15': '15:15'}
+                self.TWO_HR_START_SLOTS = ['11:15', '14:15']
+                self.COVERS = {'12:15': '11:15', '15:15': '14:15'}
+                return
+            
+            # Calculate slots using the settings
+            slots = settings_handler.calculate_slots(settings_doc)
+            
+            # If no slots calculated (invalid settings), use defaults based on start time
+            if not slots:
+                logger.warning("Settings produced no valid slots, using defaults based on start time")
+                start_time = settings_doc.get('day_start_time', '10:00')
+                if start_time.startswith('10:'):
+                    # If start time is 10:xx, use slots starting from 10:15
+                    self.ALL_SLOTS = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20']
+                    self.START_SLOTS = ['11:15', '14:15', '16:20']
+                    self.NEXT_SLOT = {'11:15': '12:15', '14:15': '15:15'}
+                    self.TWO_HR_START_SLOTS = ['11:15', '14:15']
+                    self.COVERS = {'12:15': '11:15', '15:15': '14:15'}
+                else:
+                    # Use original defaults
+                    self.ALL_SLOTS = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20']
+                    self.START_SLOTS = ['11:15', '14:15', '16:20']
+                    self.NEXT_SLOT = {'11:15': '12:15', '14:15': '15:15'}
+                    self.TWO_HR_START_SLOTS = ['11:15', '14:15']
+                    self.COVERS = {'12:15': '11:15', '15:15': '14:15'}
+                return
+            
+            self.ALL_SLOTS = slots
+            
+            # Determine practical start slots (typically every 2 hours, avoiding breaks)
+            self.START_SLOTS = []
+            self.NEXT_SLOT = {}
+            self.TWO_HR_START_SLOTS = []
+            self.COVERS = {}
+            
+            # For practicals, we typically want slots that can accommodate 2-hour sessions
+            # This means slots that have a consecutive slot available
+            for i, slot in enumerate(slots):
+                if i + 1 < len(slots):
+                    next_slot = slots[i + 1]
+                    # Check if this could be a 2-hour start (next slot exists)
+                    self.START_SLOTS.append(slot)
+                    self.NEXT_SLOT[slot] = next_slot
+                    self.TWO_HR_START_SLOTS.append(slot)
+                    self.COVERS[next_slot] = slot
+            
+            logger.info(f"✓ Loaded time slots from settings: {self.ALL_SLOTS}")
+            logger.info(f"✓ Practical start slots: {self.START_SLOTS}")
+            
+        except Exception as e:
+            logger.error(f"Error loading time slots from settings: {e}, using defaults")
+            # Fallback to default values
+            self.ALL_SLOTS = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20']
+            self.START_SLOTS = ['11:15', '14:15', '16:20']
+            self.NEXT_SLOT = {'11:15': '12:15', '14:15': '15:15'}
+            self.TWO_HR_START_SLOTS = ['11:15', '14:15']
+            self.COVERS = {'12:15': '11:15', '15:15': '14:15'}
 
     # ── Data loading ─────────────────────────────────────────────────────────
 
@@ -79,7 +155,7 @@ class TimetableGenerator:
         self.labs_list = [lab['name'] for lab in labs if lab.get('name')]
         for lab_name in self.labs_list:
             self.lab_schedule[lab_name] = {
-                day: {slot: [] for slot in ALL_SLOTS}
+                day: {slot: [] for slot in self.ALL_SLOTS}
                 for day in DAYS
             }
         logger.info(f"✓ Loaded {len(self.labs_list)} labs")
@@ -88,7 +164,7 @@ class TimetableGenerator:
         key = (year, division, batch)
         if key not in self.batch_occupied:
             self.batch_occupied[key] = {
-                day: {slot: False for slot in ALL_SLOTS}
+                day: {slot: False for slot in self.ALL_SLOTS}
                 for day in DAYS
             }
 
@@ -202,7 +278,7 @@ class TimetableGenerator:
     def _select_lab(self, practical: dict, day: str, slot: str,
                     used_labs: set) -> str | None:
         hrs       = practical['practical_hrs']
-        next_slot = NEXT_SLOT.get(slot) if hrs == 2 else None
+        next_slot = self.NEXT_SLOT.get(slot) if hrs == 2 else None
         required  = practical.get('required_lab')
         candidates = [required] if required else self.labs_list
 
@@ -223,7 +299,7 @@ class TimetableGenerator:
         year, division, batch = practical['year'], practical['division'], practical['batch']
         faculty, hrs          = practical['faculty'], practical['practical_hrs']
 
-        if hrs == 2 and slot not in TWO_HR_START_SLOTS:
+        if hrs == 2 and slot not in self.TWO_HR_START_SLOTS:
             return False
         if faculty in used_faculty:
             return False
@@ -232,7 +308,7 @@ class TimetableGenerator:
         if not self._batch_slot_free(year, division, batch, day, slot):
             return False
         if hrs == 2:
-            if not self._batch_slot_free(year, division, batch, day, NEXT_SLOT[slot]):
+            if not self._batch_slot_free(year, division, batch, day, self.NEXT_SLOT[slot]):
                 return False
         if self._select_lab(practical, day, slot, used_labs) is None:
             return False
@@ -262,16 +338,16 @@ class TimetableGenerator:
         # Lab timetable — primary slot
         self.lab_schedule[lab][day][slot].append(dict(session))
         # Lab timetable — follow-on slot (for 2-hr practicals)
-        if hrs == 2 and slot in NEXT_SLOT:
-            self.lab_schedule[lab][day][NEXT_SLOT[slot]].append(dict(session))
+        if hrs == 2 and slot in self.NEXT_SLOT:
+            self.lab_schedule[lab][day][self.NEXT_SLOT[slot]].append(dict(session))
 
         # Mark this batch occupied at both slots
         key = (year, division, batch)
         self.batch_occupied[key][day][slot] = True
-        if hrs == 2 and slot in NEXT_SLOT:
-            self.batch_occupied[key][day][NEXT_SLOT[slot]] = True
+        if hrs == 2 and slot in self.NEXT_SLOT:
+            self.batch_occupied[key][day][self.NEXT_SLOT[slot]] = True
 
-        extra = f"+{NEXT_SLOT[slot]}" if hrs == 2 and slot in NEXT_SLOT else ""
+        extra = f"+{self.NEXT_SLOT[slot]}" if hrs == 2 and slot in self.NEXT_SLOT else ""
         logger.info(f"  ✓ {year}-{division}-B{batch} {practical['subject']} "
                     f"→ {lab} @ {day} {slot}{extra}")
 
@@ -359,7 +435,7 @@ class TimetableGenerator:
                 progress = False
 
                 for day in DAYS:
-                    for slot in START_SLOTS:
+                    for slot in self.START_SLOTS:
 
                         # TG-01 FIX: build round-robin ordered list instead of
                         # fixed year_order sort.  Only include keys that still

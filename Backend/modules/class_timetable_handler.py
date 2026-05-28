@@ -4,16 +4,49 @@ from flask import jsonify
 from config import db
 from datetime import datetime
 import logging
+from modules import settings_handler
 
 logger = logging.getLogger(__name__)
 
 master_lab_timetable_collection = db['master_lab_timetable']
 class_timetable_collection      = db['class_timetable']
 
-DAYS        = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-ALL_SLOTS   = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20', '17:20']
-START_SLOTS = {'11:15', '14:15', '16:20'}
-NEXT_SLOT   = {'11:15': '12:15', '14:15': '15:15'}
+DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+
+# These will be loaded dynamically from settings
+# ALL_SLOTS   = ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20', '17:20']
+# START_SLOTS = {'11:15', '14:15', '16:20'}
+# NEXT_SLOT   = {'11:15': '12:15', '14:15': '15:15'}
+
+
+def _load_time_slots():
+    """Load time slots dynamically from settings."""
+    try:
+        # Get settings from database
+        settings_doc = settings_handler.collection.find_one({"type": "department_timings"})
+        if not settings_doc:
+            logger.warning("No department timings found, using defaults")
+            return ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20', '17:20'], {'11:15', '14:15', '16:20'}, {'11:15': '12:15', '14:15': '15:15'}
+        
+        # Calculate slots using the settings
+        slots = settings_handler.calculate_slots(settings_doc)
+        
+        # Determine practical start slots (typically every 2 hours, avoiding breaks)
+        start_slots = set()
+        next_slot = {}
+        
+        # For practicals, we typically want slots that can accommodate 2-hour sessions
+        # This means slots that have a consecutive slot available
+        for i, slot in enumerate(slots):
+            if i + 1 < len(slots):
+                next_slot[slot] = slots[i + 1]
+                start_slots.add(slot)
+        
+        return slots, start_slots, next_slot
+        
+    except Exception as e:
+        logger.error(f"Error loading time slots: {e}, using defaults")
+        return ['10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:20', '17:20'], {'11:15', '14:15', '16:20'}, {'11:15': '12:15', '14:15': '15:15'}
 
 
 # CH-02 FIX: return int, not string "Batch N".
@@ -39,7 +72,7 @@ def _normalise_batch(raw) -> int:
         return 0
 
 
-def _is_two_hour_practical(lab_doc: dict, day: str, slot: str, session: dict) -> bool:
+def _is_two_hour_practical(lab_doc: dict, day: str, slot: str, session: dict, NEXT_SLOT: dict) -> bool:
     """
     Return True if this session is part of a 2-hour practical by checking
     whether the same batch+subject appears in the follow-on slot of the
@@ -62,6 +95,11 @@ def generate_class_timetables() -> dict:
         logger.info("Starting class timetable generation…")
         deleted = class_timetable_collection.delete_many({}).deleted_count
         logger.info(f"Deleted {deleted} existing class timetables")
+
+        # Load dynamic time slots from settings
+        ALL_SLOTS, START_SLOTS, NEXT_SLOT = _load_time_slots()
+        logger.info(f"✓ Loaded time slots: {ALL_SLOTS}")
+        logger.info(f"✓ Start slots for practicals: {START_SLOTS}")
 
         master_sessions = list(master_lab_timetable_collection.find({}))
         if not master_sessions:
@@ -116,7 +154,7 @@ def generate_class_timetables() -> dict:
                         class_schedules[key][day][slot].append(dict(entry))
 
                         # Write follow-on slot for 2-hr practicals
-                        if _is_two_hour_practical(lab_doc, day, slot, session):
+                        if _is_two_hour_practical(lab_doc, day, slot, session, NEXT_SLOT):
                             next_slot = NEXT_SLOT[slot]
                             class_schedules[key][day][next_slot].append(dict(entry))
 

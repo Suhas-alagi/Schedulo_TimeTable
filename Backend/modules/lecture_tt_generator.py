@@ -3,16 +3,72 @@
 from datetime import datetime
 from config import db
 import logging
+from . import settings_handler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DAYS              = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-MORNING_SLOTS     = ['10:15', '11:15', '12:15']
-AFTERNOON_SLOTS   = ['14:15', '15:15', '16:20', '17:20']
-ALL_LECTURE_SLOTS = MORNING_SLOTS + AFTERNOON_SLOTS
-LUNCH_SLOT        = '13:15'
 
+def _load_time_slots():
+    """
+    Load time slots dynamically from settings instead of using hardcoded values.
+    Returns (all_slots, morning_slots, afternoon_slots, lunch_slot)
+    """
+    try:
+        from . import settings_handler
+        # get_timings() returns a tuple (response, status_code), so we need the response
+        timings_response, status_code = settings_handler.get_timings()
+        if hasattr(timings_response, 'get_json'):
+            settings = timings_response.get_json()
+        else:
+            # If it's already a dict, use it directly
+            settings = timings_response
+
+        if not settings or not settings.get('slots'):
+            logger.warning("No settings found, using fallback slots")
+            return (['10:15', '11:15', '12:15', '14:15', '15:15', '16:20', '17:20'],
+                    ['10:15', '11:15', '12:15'],
+                    ['14:15', '15:15', '16:20', '17:20'],
+                    '13:15')
+
+        slots = settings.get('slots', [])
+        if not slots:
+            logger.warning("Failed to calculate slots, using fallback")
+            return (['10:15', '11:15', '12:15', '14:15', '15:15', '16:20', '17:20'],
+                    ['10:15', '11:15', '12:15'],
+                    ['14:15', '15:15', '16:20', '17:20'],
+                    '13:15')
+
+        all_slots = slots
+        morning_slots = []
+        afternoon_slots = []
+        lunch_slot = None
+
+        for slot in slots:
+            hour = int(slot.split(':')[0])
+            if hour < 13:
+                morning_slots.append(slot)
+            elif hour >= 14:
+                afternoon_slots.append(slot)
+            elif hour == 13:
+                lunch_slot = slot
+
+        if not lunch_slot:
+            lunch_slot = '13:15'  # fallback
+
+        logger.info(f"✓ Loaded dynamic lecture slots: {all_slots}")
+        return all_slots, morning_slots, afternoon_slots, lunch_slot
+
+    except Exception as e:
+        logger.error(f"Error loading time slots: {e}")
+        return (['10:15', '11:15', '12:15', '14:15', '15:15', '16:20', '17:20'],
+                ['10:15', '11:15', '12:15'],
+                ['14:15', '15:15', '16:20', '17:20'],
+                '13:15')
+
+
+DAYS              = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+ALL_LECTURE_SLOTS, MORNING_SLOTS, AFTERNOON_SLOTS, LUNCH_SLOT = _load_time_slots()
 
 ROUND_ROBIN_CYCLE = ['SY', 'SY', 'TY', 'TY', 'BE']
 
@@ -28,6 +84,8 @@ class LectureTimetableGenerator:
         self.class_timetables        = {}   # (year, div) → full timetable doc
         self.subject_map             = {}   # short_name → subject doc
         self._warned_missing_keys    = set()  # LG-02 FIX: suppress repeated warnings
+        # Load dynamic time slots
+        self.ALL_LECTURE_SLOTS, self.MORNING_SLOTS, self.AFTERNOON_SLOTS, self.LUNCH_SLOT = _load_time_slots()
 
     # ── Data loading ──────────────────────────────────────────────────────────
 
@@ -350,8 +408,8 @@ class LectureTimetableGenerator:
                 progress = False
 
                 for day in DAYS:
-                    for slot in ALL_LECTURE_SLOTS:
-                        if slot == LUNCH_SLOT:
+                    for slot in self.ALL_LECTURE_SLOTS:
+                        if slot == self.LUNCH_SLOT:
                             continue
 
                         # LG-01 FIX: use round-robin ordering instead of fixed year_order
@@ -393,7 +451,7 @@ class LectureTimetableGenerator:
             # Use ALL_LECTURE_SLOTS + LUNCH_SLOT so the scaffold always matches
             # whatever slots are defined at the top of this file.
             # Previously this was a hardcoded list that didn't include 17:20.
-            save_slots = sorted(set(ALL_LECTURE_SLOTS + [LUNCH_SLOT]))
+            save_slots = sorted(set(self.ALL_LECTURE_SLOTS + [self.LUNCH_SLOT]))
             for (year, division), tt in self.class_timetables.items():
                 for day in DAYS:
                     for sl in save_slots:
